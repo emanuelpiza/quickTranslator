@@ -1,230 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-Time Translator</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Roboto, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #0d1b2a, #1a1a1a);
-            color: #f0f0f0;
-        }
-
-        .container {
-            text-align: center;
-        }
-
-        .language-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            margin-bottom: 40px;
-        }
-
-        .language-button {
-            width: 180px;
-            height: 180px;
-            border-radius: 50%;
-            border: 2px solid #888;
-            background: transparent;
-            color: #f0f0f0;
-            font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .language-button:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        #stop-container {
-            display: none;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .listening-indicator {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background-color: #4caf50;
-            animation: pulse 1.5s infinite;
-            margin-bottom: 16px;
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.5); opacity: 0.5; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        #stop-btn {
-            background: none;
-            border: none;
-            color: #999;
-            font-size: 16px;
-            margin-top: 10px;
-            text-decoration: underline;
-            cursor: pointer;
-        }
-
-        #status {
-            margin-top: 20px;
-            color: #ccc;
-            font-weight: 500;
-            min-height: 24px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Push-to-Talk Translator</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #001f3f, #8b0000);
+      color: #f0f0f0;
+      font-family: 'Segoe UI', Roboto, sans-serif;
+      height: 100vh;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .flag-label {
+      font-size: 2rem;
+      margin-bottom: 20px;
+    }
+    .mic-button {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background: transparent;
+      border: 2px solid #888;
+      color: #fff;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .mic-button:active {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
+    .status {
+      margin-top: 20px;
+      font-size: 1rem;
+      color: #ccc;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="language-buttons" id="language-buttons">
-            <button class="language-button" onclick="startTranslator('vi-VN')">Dịch sang tiếng Việt</button>
-            <button class="language-button" onclick="startTranslator('en-US')">To English</button>
-        </div>
-        <div id="stop-container">
-            <div class="listening-indicator"></div>
-            <button id="stop-btn"></button>
-        </div>
-        <div id="status">Choose a language to start translation</div>
-    </div>
+  <div class="flag-label">🇻🇳 / 🇺🇸</div>
+  <button class="mic-button" id="mic-btn">🎙️</button>
+  <div class="status" id="status">Hold to talk</div>
 
-    <script>
-        const BACKEND_WEBSOCKET_URL = 'wss://translator-backend-1-fxtx.onrender.com';
-        let socket;
-        let audioContext;
-        let mediaStream;
-        let audioWorkletNode;
-        let isPlaying = false;
-        let audioQueue = [];
-        let currentLangLabel = '';
+  <script>
+    const micBtn = document.getElementById('mic-btn');
+    const statusEl = document.getElementById('status');
+    const BACKEND_URL = 'wss://translator-backend-1-fxtx.onrender.com';
 
-        async function startTranslator(langCode) {
-            currentLangLabel = langCode === 'vi-VN' ? 'Dừng lại' : 'Stop';
-            document.getElementById('language-buttons').style.display = 'none';
-            document.getElementById('stop-container').style.display = 'flex';
-            document.getElementById('stop-btn').textContent = currentLangLabel;
-            document.getElementById('stop-btn').onclick = stopTranslator;
-            updateStatus('Initializing...');
+    let mediaRecorder;
+    let chunks = [];
+    let socket;
 
-            try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-                await audioContext.audioWorklet.addModule(URL.createObjectURL(new Blob([`
-                    class PCMProcessor extends AudioWorkletProcessor {
-                        process(inputs) {
-                            const input = inputs[0][0];
-                            if (input) {
-                                const buffer = new ArrayBuffer(input.length * 2);
-                                const view = new DataView(buffer);
-                                for (let i = 0; i < input.length; i++) {
-                                    const s = Math.max(-1, Math.min(1, input[i]));
-                                    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-                                }
-                                this.port.postMessage(buffer);
-                            }
-                            return true;
-                        }
-                    }
-                    registerProcessor('pcm-processor', PCMProcessor);
-                `], { type: 'application/javascript' })));
+    micBtn.addEventListener('mousedown', startRecording);
+    micBtn.addEventListener('touchstart', startRecording);
 
-                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const source = audioContext.createMediaStreamSource(mediaStream);
-                audioWorkletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
-                audioWorkletNode.port.onmessage = (event) => {
-                    const rawBuffer = event.data;
-                    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(rawBuffer)));
-                    if (socket && socket.readyState === WebSocket.OPEN) {
-                        socket.send(JSON.stringify({ event: 'audio', data: base64Audio }));
-                    }
-                };
-                source.connect(audioWorkletNode).connect(audioContext.destination);
+    micBtn.addEventListener('mouseup', stopRecording);
+    micBtn.addEventListener('mouseleave', stopRecording);
+    micBtn.addEventListener('touchend', stopRecording);
 
-                connectWebSocket(langCode);
-            } catch (err) {
-                console.error(err);
-                updateStatus('Initialization failed.', true);
-            }
+    async function startRecording() {
+      if (socket) socket.close();
+
+      statusEl.textContent = 'Listening...';
+      chunks = [];
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.start();
+
+      mediaRecorder.ondataavailable = e => chunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Audio = reader.result.split(',')[1];
+          sendToBackend(base64Audio);
+        };
+        reader.readAsDataURL(blob);
+      };
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        statusEl.textContent = 'Translating...';
+      }
+    }
+
+    function sendToBackend(base64Audio) {
+      socket = new WebSocket(BACKEND_URL);
+
+      socket.onopen = () => {
+        socket.send(JSON.stringify({ event: 'start-auto' }));
+        socket.send(JSON.stringify({ event: 'audio', data: base64Audio }));
+        socket.send(JSON.stringify({ event: 'stop' }));
+      };
+
+      socket.onmessage = event => {
+        const msg = JSON.parse(event.data);
+        if (msg.event === 'audio' && msg.data) {
+          playAudio(msg.data);
+          statusEl.textContent = '✅ Translated';
+        } else if (msg.event === 'error') {
+          statusEl.textContent = `Error: ${msg.message}`;
         }
+      };
+    }
 
-        function stopTranslator() {
-            if (socket) socket.close();
-            if (audioWorkletNode) audioWorkletNode.disconnect();
-            if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
-            if (audioContext) audioContext.close();
-
-            document.getElementById('stop-container').style.display = 'none';
-            document.getElementById('language-buttons').style.display = 'flex';
-
-            updateStatus('Session ended.');
-        }
-
-        function connectWebSocket(targetLanguage) {
-            socket = new WebSocket(BACKEND_WEBSOCKET_URL);
-            socket.onopen = () => {
-                socket.send(JSON.stringify({ event: 'start', targetLanguage }));
-                updateStatus('Connected. Listening...', false);
-            };
-            socket.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.event === 'audio' && msg.data) {
-                    const audioData = base64ToArrayBuffer(msg.data);
-                    audioQueue.push(audioData);
-                    if (!isPlaying) playNextInQueue();
-                } else if (msg.event === 'error') {
-                    updateStatus(`Error: ${msg.message}`, true);
-                }
-            };
-            socket.onerror = err => {
-                console.error('WebSocket Error:', err);
-                updateStatus('Connection error.', true);
-                stopTranslator();
-            };
-            socket.onclose = () => stopTranslator();
-        }
-
-        async function playNextInQueue() {
-            if (audioQueue.length > 0) {
-                isPlaying = true;
-                const audioData = audioQueue.shift();
-                try {
-                    const audioBuffer = await audioContext.decodeAudioData(audioData);
-                    const source = audioContext.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(audioContext.destination);
-                    source.start();
-                    source.onended = playNextInQueue;
-                } catch (e) {
-                    console.error('Audio decode error:', e);
-                    isPlaying = false;
-                    playNextInQueue();
-                }
-            } else {
-                isPlaying = false;
-            }
-        }
-
-        function updateStatus(message, isError = false) {
-            const statusDiv = document.getElementById('status');
-            statusDiv.textContent = message;
-            statusDiv.style.color = isError ? '#ff5252' : '#aaa';
-        }
-
-        function base64ToArrayBuffer(base64) {
-            const binaryString = window.atob(base64);
-            const len = binaryString.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-            return bytes.buffer;
-        }
-    </script>
+    function playAudio(base64) {
+      const audio = new Audio('data:audio/mp3;base64,' + base64);
+      audio.play();
+    }
+  </script>
 </body>
 </html>
