@@ -62,11 +62,6 @@
         }
 
         async function startListening() {
-            if (!BACKEND_WEBSOCKET_URL.includes('YOUR_PROJECT_ID')) {
-                updateStatus('Error: Please configure the backend URL in the HTML file.', true);
-                return;
-            }
-            
             startStopBtn.disabled = true;
             updateStatus('Initializing...');
 
