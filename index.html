@@ -5,21 +5,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real-Time Translator</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f2f5; }
-        .container { text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        h1 { color: #333; margin-top: 0; }
-        button { width: 100%; padding: 15px; margin-top: 20px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; background-color: #007bff; color: white; border: none; cursor: pointer; transition: background-color 0.3s; }
-        button.recording { background-color: #dc3545; }
-        button:disabled { background-color: #aaa; }
-        #status { margin-top: 20px; color: #666; font-weight: 500; min-height: 24px; }
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #121212;
+            color: #f0f0f0;
+        }
+
+        .container {
+            text-align: center;
+        }
+
+        .language-buttons {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .language-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 2px solid #1e88e5;
+            background-color: #1e88e5;
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .language-button:hover {
+            background-color: #1565c0;
+        }
+
+        #stop-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .listening-indicator {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: #4caf50;
+            animation: pulse 1.5s infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        #stop-btn {
+            background-color: #f44336;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #status {
+            margin-top: 20px;
+            color: #ccc;
+            font-weight: 500;
+            min-height: 24px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Real-Time Translator</h1>
-        <button onclick="startTranslator('vi-VN')">Dịch sang tiếng Việt</button>
-        <button onclick="startTranslator('en-US')">To English</button>
-        <button id="stop-btn" style="display:none">Stop</button>
+        <div class="language-buttons" id="language-buttons">
+            <button class="language-button" onclick="startTranslator('vi-VN')">Translate Vietnamese</button>
+            <button class="language-button" onclick="startTranslator('en-US')">Dịch tiếng Anh</button>
+        </div>
+        <div id="stop-container">
+            <div class="listening-indicator"></div>
+            <button id="stop-btn">Stop</button>
+        </div>
         <div id="status">Choose a language to start translation</div>
     </div>
 
@@ -33,7 +106,8 @@
         let audioQueue = [];
 
         async function startTranslator(langCode) {
-            document.getElementById('stop-btn').style.display = 'block';
+            document.getElementById('language-buttons').style.display = 'none';
+            document.getElementById('stop-container').style.display = 'flex';
             document.getElementById('stop-btn').onclick = stopTranslator;
             updateStatus('Initializing...');
 
@@ -82,6 +156,10 @@
             if (audioWorkletNode) audioWorkletNode.disconnect();
             if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
             if (audioContext) audioContext.close();
+
+            document.getElementById('stop-container').style.display = 'none';
+            document.getElementById('language-buttons').style.display = 'flex';
+
             updateStatus('Session ended.');
         }
 
@@ -133,7 +211,7 @@
         function updateStatus(message, isError = false) {
             const statusDiv = document.getElementById('status');
             statusDiv.textContent = message;
-            statusDiv.style.color = isError ? '#dc3545' : '#666';
+            statusDiv.style.color = isError ? '#ff5252' : '#aaa';
         }
 
         function base64ToArrayBuffer(base64) {
