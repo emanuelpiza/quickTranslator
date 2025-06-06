@@ -13,7 +13,7 @@
             justify-content: center;
             height: 100vh;
             margin: 0;
-            background-color: #121212;
+            background: linear-gradient(135deg, #0d1b2a, #1a1a1a);
             color: #f0f0f0;
         }
 
@@ -23,25 +23,26 @@
 
         .language-buttons {
             display: flex;
-            gap: 30px;
+            flex-direction: column;
+            gap: 20px;
             margin-bottom: 40px;
         }
 
         .language-button {
-            width: 120px;
-            height: 120px;
+            width: 180px;
+            height: 180px;
             border-radius: 50%;
-            border: 2px solid #1e88e5;
-            background-color: #1e88e5;
-            color: #fff;
-            font-size: 16px;
+            border: 2px solid #888;
+            background: transparent;
+            color: #f0f0f0;
+            font-size: 18px;
             font-weight: bold;
             cursor: pointer;
             transition: all 0.3s ease;
         }
 
         .language-button:hover {
-            background-color: #1565c0;
+            background: rgba(255, 255, 255, 0.1);
         }
 
         #stop-container {
@@ -51,8 +52,8 @@
         }
 
         .listening-indicator {
-            width: 24px;
-            height: 24px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
             background-color: #4caf50;
             animation: pulse 1.5s infinite;
@@ -66,12 +67,12 @@
         }
 
         #stop-btn {
-            background-color: #f44336;
+            background: none;
             border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            color: white;
+            color: #999;
             font-size: 16px;
+            margin-top: 10px;
+            text-decoration: underline;
             cursor: pointer;
         }
 
@@ -86,12 +87,12 @@
 <body>
     <div class="container">
         <div class="language-buttons" id="language-buttons">
-            <button class="language-button" onclick="startTranslator('vi-VN')">Translate Vietnamese</button>
-            <button class="language-button" onclick="startTranslator('en-US')">Dịch tiếng Anh</button>
+            <button class="language-button" onclick="startTranslator('vi-VN')">Dịch sang tiếng Việt</button>
+            <button class="language-button" onclick="startTranslator('en-US')">To English</button>
         </div>
         <div id="stop-container">
             <div class="listening-indicator"></div>
-            <button id="stop-btn">Stop</button>
+            <button id="stop-btn"></button>
         </div>
         <div id="status">Choose a language to start translation</div>
     </div>
@@ -104,10 +105,13 @@
         let audioWorkletNode;
         let isPlaying = false;
         let audioQueue = [];
+        let currentLangLabel = '';
 
         async function startTranslator(langCode) {
+            currentLangLabel = langCode === 'vi-VN' ? 'Dừng lại' : 'Stop';
             document.getElementById('language-buttons').style.display = 'none';
             document.getElementById('stop-container').style.display = 'flex';
+            document.getElementById('stop-btn').textContent = currentLangLabel;
             document.getElementById('stop-btn').onclick = stopTranslator;
             updateStatus('Initializing...');
 
