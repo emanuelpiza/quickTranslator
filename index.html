@@ -8,37 +8,23 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f2f5; }
         .container { text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         h1 { color: #333; margin-top: 0; }
-        select, button { width: 100%; padding: 15px; margin-top: 20px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; }
-        button { background-color: #007bff; color: white; border: none; cursor: pointer; transition: background-color 0.3s; }
+        button { width: 100%; padding: 15px; margin-top: 20px; border-radius: 8px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; background-color: #007bff; color: white; border: none; cursor: pointer; transition: background-color 0.3s; }
         button.recording { background-color: #dc3545; }
         button:disabled { background-color: #aaa; }
-        #status { margin-top: 20px; color: #666; font-weight: 500; min-height: 24px;}
+        #status { margin-top: 20px; color: #666; font-weight: 500; min-height: 24px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Real-Time Translator</h1>
-        <p>Translate from English to:</p>
-        <select id="language-select">
-            <option value="vi-VN">Vietnamese</option>
-            <option value="en-US">English</option>
-            <option value="es-ES">Spanish</option>
-            <option value="fr-FR">French</option>
-            <option value="ja-JP">Japanese</option>
-            <option value="ko-KR">Korean</option>
-            <option value="de-DE">German</option>
-        </select>
-        <button id="start-stop-btn">Start Listening</button>
-        <div id="status">Select a language and press Start</div>
+        <button onclick="startTranslator('vi-VN')">Translate Vietnamese</button>
+        <button onclick="startTranslator('en-US')">Dịch tiếng Anh</button>
+        <button id="stop-btn" style="display:none">Stop</button>
+        <div id="status">Choose a language to start translation</div>
     </div>
 
     <script>
         const BACKEND_WEBSOCKET_URL = 'wss://translator-backend-1-fxtx.onrender.com';
-        const startStopBtn = document.getElementById('start-stop-btn');
-        const languageSelect = document.getElementById('language-select');
-        const statusDiv = document.getElementById('status');
-
-        let isListening = false;
         let socket;
         let audioContext;
         let mediaStream;
@@ -46,18 +32,9 @@
         let isPlaying = false;
         let audioQueue = [];
 
-        startStopBtn.addEventListener('click', toggleListening);
-
-        async function toggleListening() {
-            if (isListening) {
-                stopListening();
-            } else {
-                await startListening();
-            }
-        }
-
-        async function startListening() {
-            startStopBtn.disabled = true;
+        async function startTranslator(langCode) {
+            document.getElementById('stop-btn').style.display = 'block';
+            document.getElementById('stop-btn').onclick = stopTranslator;
             updateStatus('Initializing...');
 
             try {
@@ -83,7 +60,6 @@
 
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const source = audioContext.createMediaStreamSource(mediaStream);
-
                 audioWorkletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
                 audioWorkletNode.port.onmessage = (event) => {
                     const rawBuffer = event.data;
@@ -92,44 +68,29 @@
                         socket.send(JSON.stringify({ event: 'audio', data: base64Audio }));
                     }
                 };
-
                 source.connect(audioWorkletNode).connect(audioContext.destination);
-                connectWebSocket();
 
-                isListening = true;
-                startStopBtn.textContent = 'Stop Listening';
-                startStopBtn.classList.add('recording');
-                updateStatus('Connected. Listening...', false);
-            } catch (error) {
-                console.error('Error starting listening:', error);
-                updateStatus('Error: Could not access microphone.', true);
-            } finally {
-                startStopBtn.disabled = false;
+                connectWebSocket(langCode);
+            } catch (err) {
+                console.error(err);
+                updateStatus('Initialization failed.', true);
             }
         }
 
-        function stopListening() {
-            if (socket) {
-                socket.send(JSON.stringify({ event: 'stop' }));
-                socket.close();
-            }
+        function stopTranslator() {
+            if (socket) socket.close();
             if (audioWorkletNode) audioWorkletNode.disconnect();
-            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+            if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
             if (audioContext) audioContext.close();
-
-            isListening = false;
-            startStopBtn.textContent = 'Start Listening';
-            startStopBtn.classList.remove('recording');
             updateStatus('Session ended.');
         }
 
-        function connectWebSocket() {
+        function connectWebSocket(targetLanguage) {
             socket = new WebSocket(BACKEND_WEBSOCKET_URL);
-
             socket.onopen = () => {
-                socket.send(JSON.stringify({ event: 'start', targetLanguage: languageSelect.value }));
+                socket.send(JSON.stringify({ event: 'start', targetLanguage }));
+                updateStatus('Connected. Listening...', false);
             };
-
             socket.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 if (msg.event === 'audio' && msg.data) {
@@ -140,16 +101,12 @@
                     updateStatus(`Error: ${msg.message}`, true);
                 }
             };
-
-            socket.onerror = (error) => {
-                console.error('WebSocket Error:', error);
-                updateStatus('Error: Connection to server failed.', true);
-                stopListening();
+            socket.onerror = err => {
+                console.error('WebSocket Error:', err);
+                updateStatus('Connection error.', true);
+                stopTranslator();
             };
-
-            socket.onclose = () => {
-                if (isListening) stopListening();
-            };
+            socket.onclose = () => stopTranslator();
         }
 
         async function playNextInQueue() {
@@ -164,7 +121,7 @@
                     source.start();
                     source.onended = playNextInQueue;
                 } catch (e) {
-                    console.error('Error decoding audio data', e);
+                    console.error('Audio decode error:', e);
                     isPlaying = false;
                     playNextInQueue();
                 }
@@ -174,6 +131,7 @@
         }
 
         function updateStatus(message, isError = false) {
+            const statusDiv = document.getElementById('status');
             statusDiv.textContent = message;
             statusDiv.style.color = isError ? '#dc3545' : '#666';
         }
