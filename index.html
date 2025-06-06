@@ -77,7 +77,15 @@
                 processor.onaudioprocess = (e) => {
                     const inputData = e.inputBuffer.getChannelData(0);
                     if (socket && socket.readyState === WebSocket.OPEN) {
-                        socket.send(JSON.stringify({ event: 'audio', data: bufferTo16BitPcm(inputData) }));
+                        
+                            const rawBuffer = bufferTo16BitPcm(inputData);
+                            const base64Audio = btoa(String.fromCharCode(...new Uint8Array(rawBuffer)));
+                            
+                            socket.send(JSON.stringify({
+                              event: 'audio',
+                              data: base64Audio
+                            }));
+                        
                     }
                 };
                 
