@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Push-to-Talk Translator</title>
+  <title>Push-to-Talk Translator (OpenAI)</title>
   <style>
     body {
-      background: linear-gradient(135deg, #001f3f, #8b0000);
+      background: linear-gradient(135deg, #101729, #4b002c);
       color: #f0f0f0;
       font-family: 'Segoe UI', Roboto, sans-serif;
       height: 100vh;
@@ -15,6 +15,8 @@
       align-items: center;
       justify-content: center;
       flex-direction: column;
+      text-align: center;
+      padding: 1rem;
     }
     .flag-label {
       font-size: 2rem;
@@ -25,99 +27,178 @@
       height: 140px;
       border-radius: 50%;
       background: transparent;
-      border: 2px solid #888;
+      border: 3px solid #888;
       color: #fff;
-      font-size: 2rem;
+      font-size: 3rem;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: background 0.3s;
+      transition: background 0.3s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent; /* Remove highlight on tap for mobile */
     }
     .mic-button:active {
       background-color: rgba(255, 255, 255, 0.2);
+      transform: scale(0.95);
     }
     .status {
       margin-top: 20px;
-      font-size: 1rem;
+      font-size: 1.2rem;
       color: #ccc;
-      text-align: center;
+      height: 2em; /* Reserve space to prevent layout shift */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .loader {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        animation: spin 1s linear infinite;
+        display: none; /* Hidden by default */
+        margin-right: 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
   <div class="flag-label">🇻🇳 / 🇺🇸</div>
   <button class="mic-button" id="mic-btn">🎙️</button>
-  <div class="status" id="status">Hold to talk</div>
+  <div class="status" id="status-container">
+      <div class="loader" id="loader"></div>
+      <span id="status-text">Hold to talk</span>
+  </div>
 
   <script>
     const micBtn = document.getElementById('mic-btn');
-    const statusEl = document.getElementById('status');
-    const BACKEND_URL = 'wss://translator-backend-1-fxtx.onrender.com';
+    const statusText = document.getElementById('status-text');
+    const loader = document.getElementById('loader');
+    
+    // Use window.location.hostname to dynamically set the backend URL
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const BACKEND_URL = isLocal 
+      ? 'ws://localhost:3000' 
+      : 'wss://SEU-BACKEND-URL.onrender.com'; // <-- IMPORTANTE: Atualize este URL!
 
     let mediaRecorder;
     let chunks = [];
     let socket;
+    let stream;
 
-    micBtn.addEventListener('mousedown', startRecording);
-    micBtn.addEventListener('touchstart', startRecording);
+    // Set status and loader visibility
+    function setStatus(text, isLoading = false) {
+        statusText.textContent = text;
+        loader.style.display = isLoading ? 'block' : 'none';
+    }
 
-    micBtn.addEventListener('mouseup', stopRecording);
-    micBtn.addEventListener('mouseleave', stopRecording);
-    micBtn.addEventListener('touchend', stopRecording);
-
-    async function startRecording() {
+    // Handlers for starting recording
+    const startRecording = async (event) => {
+      event.preventDefault(); // Prevents default touch behavior like scrolling
       if (socket) socket.close();
+      setStatus('Listening...', true);
+      
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Use a supported MIME type, 'audio/webm' is widely supported
+        const options = { mimeType: 'audio/webm' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.log(`${options.mimeType} is not Supported. Trying 'audio/ogg'`);
+            options.mimeType = 'audio/ogg; codecs=opus';
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                setStatus('Error: No supported audio format found.');
+                return;
+            }
+        }
+        
+        mediaRecorder = new MediaRecorder(stream, options);
+        chunks = [];
+        mediaRecorder.start(100); // Start recording
 
-      statusEl.textContent = 'Listening...';
-      chunks = [];
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.start();
-
-      mediaRecorder.ondataavailable = e => chunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64Audio = reader.result.split(',')[1];
-          sendToBackend(base64Audio);
+        mediaRecorder.ondataavailable = e => {
+            if(e.data.size > 0) {
+              chunks.push(e.data);
+            }
         };
-        reader.readAsDataURL(blob);
-      };
-    }
 
-    function stopRecording() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        statusEl.textContent = 'Translating...';
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(chunks, { type: options.mimeType });
+          sendToBackend(blob);
+          stream.getTracks().forEach(track => track.stop()); // Stop the microphone access
+        };
+
+      } catch (err) {
+        console.error("Error accessing microphone:", err);
+        setStatus('Error: Mic access denied.');
       }
-    }
+    };
 
-    function sendToBackend(base64Audio) {
+    // Handlers for stopping recording
+    const stopRecording = (event) => {
+      event.preventDefault();
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        setStatus('Processing...', true);
+      }
+    };
+
+    function sendToBackend(audioBlob) {
       socket = new WebSocket(BACKEND_URL);
 
       socket.onopen = () => {
-        socket.send(JSON.stringify({ event: 'start-auto' }));
-        socket.send(JSON.stringify({ event: 'audio', data: base64Audio }));
-        socket.send(JSON.stringify({ event: 'stop' }));
+        // Send the audio blob directly. The backend will handle it.
+        socket.send(audioBlob);
       };
 
       socket.onmessage = event => {
-        const msg = JSON.parse(event.data);
-        if (msg.event === 'audio' && msg.data) {
-          playAudio(msg.data);
-          statusEl.textContent = '✅ Translated';
-        } else if (msg.event === 'error') {
-          statusEl.textContent = `Error: ${msg.message}`;
+        try {
+            const msg = JSON.parse(event.data);
+            if (msg.event === 'audio' && msg.data) {
+              playAudio(msg.data);
+              setStatus('✅ Translated');
+            } else if (msg.event === 'error') {
+              console.error('Backend Error:', msg.message);
+              setStatus(`Error: ${msg.message}`);
+            }
+        } catch(e) {
+            console.error("Failed to parse message from backend:", event.data);
+            setStatus('Error: Invalid response.');
         }
+      };
+      
+      socket.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        setStatus('Error: Connection failed.');
+      };
+
+      socket.onclose = () => {
+        setStatus('Hold to talk');
+        loader.style.display = 'none';
       };
     }
 
     function playAudio(base64) {
       const audio = new Audio('data:audio/mp3;base64,' + base64);
       audio.play();
+      audio.onended = () => {
+        setStatus('Hold to talk'); // Reset status after audio plays
+      };
     }
+
+    // Mouse events
+    micBtn.addEventListener('mousedown', startRecording);
+    micBtn.addEventListener('mouseup', stopRecording);
+    micBtn.addEventListener('mouseleave', stopRecording); // Stop if mouse leaves button
+
+    // Touch events
+    micBtn.addEventListener('touchstart', startRecording);
+    micBtn.addEventListener('touchend', stopRecording);
+
   </script>
 </body>
 </html>
