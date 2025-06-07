@@ -155,6 +155,13 @@
       const audio = new Audio('data:audio/mp3;base64,' + base64);
       audio.play();
     }
+    document.getElementById('test-btn').addEventListener('click', () => {
+  const audio = new Audio();
+  // Beep curto em base64 (válido, compatível com a maioria dos browsers)
+  audio.src = 'data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAAwAAAAACAAACpA==';
+  audio.play().catch(err => console.warn('Test Sound failed:', err));
+});
+
   </script>
 </body>
 </html>
