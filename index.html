@@ -59,9 +59,20 @@
       align-items: center;
       justify-content: center;
     }
+
+    #allow-mic {
+      width: 200px;
+      height: 60px;
+      font-size: 1.1rem;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
+
+  <button id="allow-mic" class="translate-button">
+    🎙️ Allow Mic
+  </button>
 
   <div class="container">
     <button class="translate-button" id="from-en-btn" data-target="vi">
@@ -81,6 +92,7 @@
 <script>
   const fromEnBtn = document.getElementById('from-en-btn');
   const fromViBtn = document.getElementById('from-vi-btn');
+  const allowMicBtn = document.getElementById('allow-mic');
   const statusEl = document.getElementById('status');
   const audioPlayer = document.getElementById('audio-player');
 
@@ -107,6 +119,18 @@
     btn.addEventListener('mousedown', unlockAudio, { once: true });
   });
 
+  allowMicBtn.addEventListener('click', async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      allowMicBtn.style.display = 'none';
+      statusEl.textContent = 'Mic allowed!';
+    } catch (err) {
+      console.error('Microphone permission denied:', err);
+      statusEl.textContent = 'Microphone permission required.';
+    }
+  });
+
   const startRecording = async (event) => {
     event.preventDefault();
     targetLang = event.currentTarget.dataset.target;
@@ -124,7 +148,6 @@
         }
       });
 
-      // 🎛️ WebAudio Processing
       const audioContext = new AudioContext();
       const sourceNode = audioContext.createMediaStreamSource(stream);
 
@@ -142,7 +165,6 @@
       const destination = audioContext.createMediaStreamDestination();
       sourceNode.connect(highpassFilter).connect(compressor).connect(destination);
 
-      // 🎙️ Use filtered audio for recording
       mediaRecorder = new MediaRecorder(destination.stream, { mimeType: 'audio/webm' });
       mediaRecorder.start();
 
