@@ -2,13 +2,13 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>quickTranslator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Tradutor Push-to-Talk (Google)</title>
   <style>
     body {
       background: linear-gradient(135deg, #001f3f, #8b0000);
       color: #f0f0f0;
-      font-family: 'Segoe UI', Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       height: 100vh;
       margin: 0;
       display: flex;
@@ -17,11 +17,11 @@
       flex-direction: column;
       text-align: center;
       padding: 1rem;
-      gap: 20px; /* Espaço entre os elementos */
+      gap: 20px;
     }
     .container {
         display: flex;
-        gap: 20px; /* Espaço entre os botões */
+        gap: 20px;
         justify-content: center;
         align-items: center;
         flex-wrap: wrap;
@@ -40,7 +40,7 @@
       justify-content: center;
       cursor: pointer;
       transition: background 0.3s, transform 0.1s;
-      -webkit-tap-highlight-color: transparent; /* Remove o destaque de toque */
+      -webkit-tap-highlight-color: transparent;
     }
     .translate-button .flag {
         font-size: 3rem;
@@ -66,37 +66,64 @@
   <div class="container">
     <button class="translate-button" id="to-en-btn" data-target="en">
       <div class="flag">🇺🇸</div>
-      <span>To<br>English</span>
+      <span>Para Inglês</span>
     </button>
     <button class="translate-button" id="to-vi-btn" data-target="vi">
       <div class="flag">🇻🇳</div>
-      <span>To<br>Vietnamese</span>
+      <span>Para Vietnamita</span>
     </button>
   </div>
   
-  <div class="status" id="status">Push to talk</div>
+  <div class="status" id="status">Pressione para falar</div>
+  
+  <!-- Elemento de áudio persistente, escondido. Crucial para a correção do iOS. -->
+  <audio id="audio-player" style="display: none;"></audio>
 
   <script>
     const toEnBtn = document.getElementById('to-en-btn');
     const toViBtn = document.getElementById('to-vi-btn');
     const statusEl = document.getElementById('status');
+    const audioPlayer = document.getElementById('audio-player');
     
-    const BACKEND_URL = 'wss://translator-backend-1-fxtx.onrender.com'; // <-- IMPORTANTE: Atualize este URL!
+    // IMPORTANTE: Atualize este URL para o URL do seu backend no Render!
+    const BACKEND_URL = 'wss://SEU-BACKEND-URL.onrender.com'; 
 
     let mediaRecorder;
     let chunks = [];
     let socket;
     let stream;
     let targetLang = '';
+    let isAudioUnlocked = false; // Flag para controlar o desbloqueio do áudio
 
-    // Função para iniciar a gravação
+    // ** A CORREÇÃO PARA O IOS COMEÇA AQUI **
+    // Função para desbloquear o áudio no iOS. Deve ser chamada por uma interação do utilizador.
+    const unlockAudio = () => {
+      if (isAudioUnlocked) return;
+      // Toca um som de silêncio para "acordar" o sistema de áudio do navegador.
+      // O navegador agora confia nesta página para tocar áudio.
+      audioPlayer.src = "data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTG93IFF1YWxpdHkgFree-Loops.com";
+      audioPlayer.play()
+        .then(() => {
+          isAudioUnlocked = true;
+          console.log('Contexto de áudio desbloqueado com sucesso.');
+        })
+        .catch(e => console.error("Desbloqueio de áudio falhou, mas tentaremos de novo.", e));
+    };
+    
+    // Adiciona o desbloqueio ao primeiro toque em qualquer um dos botões.
+    [toEnBtn, toViBtn].forEach(btn => {
+      btn.addEventListener('touchstart', unlockAudio, { once: true });
+      btn.addEventListener('mousedown', unlockAudio, { once: true });
+    });
+    // ** FIM DA CORREÇÃO PARA O IOS **
+
+
     const startRecording = async (event) => {
       event.preventDefault();
-      // Define o idioma de destino com base no botão pressionado
       targetLang = event.currentTarget.dataset.target;
 
       if (socket) socket.close();
-      statusEl.textContent = 'Listening...';
+      statusEl.textContent = 'A ouvir...';
       chunks = [];
       
       try {
@@ -110,27 +137,24 @@
           const blob = new Blob(chunks, { type: 'audio/webm' });
           const reader = new FileReader();
           reader.onloadend = () => {
-            // Extrai os dados base64 do áudio
             const base64Audio = reader.result.split(',')[1];
             sendToBackend(base64Audio, targetLang);
           };
           reader.readAsDataURL(blob);
-          // Para o acesso ao microfone assim que a gravação termina
           stream.getTracks().forEach(track => track.stop());
         };
 
       } catch (err) {
-        console.error("Error accessing microphone:", err);
-        statusEl.textContent = 'Error: Microphone access denied.';
+        console.error("Erro ao aceder ao microfone:", err);
+        statusEl.textContent = 'Erro: Acesso ao microfone negado.';
       }
     };
 
-    // Função para parar a gravação
     const stopRecording = (event) => {
       event.preventDefault();
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
-        statusEl.textContent = 'Translating...';
+        statusEl.textContent = 'A traduzir...';
       }
     };
 
@@ -138,7 +162,6 @@
       socket = new WebSocket(BACKEND_URL);
 
       socket.onopen = () => {
-        // Envia o áudio e o idioma de destino de uma só vez
         socket.send(JSON.stringify({
           event: 'audio',
           targetLang: lang,
@@ -149,43 +172,37 @@
       socket.onmessage = event => {
         const msg = JSON.parse(event.data);
         if (msg.event === 'audio' && msg.data) {
-          statusEl.textContent = 'Playing...';
-          playAudio(msg.data);
+          statusEl.textContent = 'A tocar...';
+          playAudio(msg.data); // Usa a função de reprodução atualizada
         } else if (msg.event === 'error') {
-          statusEl.textContent = `Error: ${msg.message}`;
+          statusEl.textContent = `Erro: ${msg.message}`;
         }
       };
       
       socket.onerror = (error) => {
         console.error('Erro de WebSocket:', error);
-        statusEl.textContent = 'Error: Websocked Failure.';
-      };
-
-      socket.onclose = () => {
-        // Não redefine o status aqui para que as mensagens de erro permaneçam visíveis
+        statusEl.textContent = 'Erro: Falha na ligação.';
       };
     }
 
     function playAudio(base64) {
-      const audio = new Audio('data:audio/mp3;base64,' + base64);
-      // O play() aqui é acionado por uma cadeia de eventos iniciada pelo utilizador, o que ajuda nos telemóveis
-      audio.play();
-      audio.onended = () => {
-        statusEl.textContent = 'Push to talk'; // Redefine o status após a reprodução
+      // Reutiliza o elemento de áudio que já foi "desbloqueado"
+      audioPlayer.src = 'data:audio/mp3;base64,' + base64;
+      audioPlayer.play().catch(e => {
+          console.error("Erro ao tocar áudio:", e);
+          statusEl.textContent = 'Erro ao tocar áudio.';
+      });
+      audioPlayer.onended = () => {
+        statusEl.textContent = 'Pressione para falar';
       };
-       audio.onerror = () => {
-        statusEl.textContent = 'Error playing audio.';
-      }
     }
 
     // Adiciona os mesmos eventos a ambos os botões
     [toEnBtn, toViBtn].forEach(btn => {
-      // Eventos de rato
       btn.addEventListener('mousedown', startRecording);
       btn.addEventListener('mouseup', stopRecording);
-      btn.addEventListener('mouseleave', stopRecording); // Para se o rato sair do botão
-      // Eventos de toque
-      btn.addEventListener('touchstart', startRecording);
+      btn.addEventListener('mouseleave', stopRecording);
+      btn.addEventListener('touchstart', startRecording, { passive: false }); // passive: false para prevenir scroll
       btn.addEventListener('touchend', stopRecording);
     });
   </script>
