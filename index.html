@@ -60,19 +60,31 @@
       justify-content: center;
     }
 
+    /* Novo botão Allow Mic fixo */
     #allow-mic {
-      width: 200px;
-      height: 60px;
-      font-size: 1.1rem;
+      width: 160px;
+      height: 50px;
+      font-size: 1rem;
       font-weight: bold;
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+    }
+
+    .mic-container {
+      position: relative;
+      height: 70px;
+      width: 100%;
     }
   </style>
 </head>
 <body>
 
-  <button id="allow-mic" class="translate-button">
-    🎙️ Allow Mic
-  </button>
+  <div class="mic-container">
+    <button id="allow-mic" class="translate-button">🎙️ Allow Mic</button>
+  </div>
 
   <div class="container">
     <button class="translate-button" id="from-en-btn" data-target="vi">
@@ -123,7 +135,8 @@
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(track => track.stop());
-      allowMicBtn.style.display = 'none';
+      allowMicBtn.style.visibility = 'hidden';
+      allowMicBtn.style.pointerEvents = 'none';
       statusEl.textContent = 'Mic allowed!';
     } catch (err) {
       console.error('Microphone permission denied:', err);
