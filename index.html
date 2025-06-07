@@ -62,22 +62,6 @@
       color: #ccc;
       text-align: center;
     }
-    
-    .test-button {
-        margin-top: 20px;
-        background: #333;
-        border: 2px solid #888;
-        color: #fff;
-        font-size: 1rem;
-        padding: 10px 20px;
-        border-radius: 12px;
-        cursor: pointer;
-        transition: background 0.3s;
-      }
-      .test-button:active {
-        background-color: rgba(255, 255, 255, 0.2);
-      }
-
 
   </style>
 </head>
@@ -85,7 +69,6 @@
   <div class="flag-label">🇻🇳 / 🇺🇸</div>
   <button class="mic-button" id="mic-btn">🎙️</button>
   <div class="status" id="status">Hold to talk</div>
-<button class="test-button" id="test-btn">🔊 Test Sound</button>
 
   <script>
     const micBtn = document.getElementById('mic-btn');
@@ -151,16 +134,6 @@
       };
     }
 
-    function playAudio(base64) {
-      const audio = new Audio('data:audio/mp3;base64,' + base64);
-      audio.play();
-    }
-    document.getElementById('test-btn').addEventListener('click', () => {
-  const audio = new Audio();
-  // Beep curto em base64 (válido, compatível com a maioria dos browsers)
-  audio.src = 'data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAAwAAAAACAAACpA==';
-  audio.play().catch(err => console.warn('Test Sound failed:', err));
-});
 
   </script>
 </body>
